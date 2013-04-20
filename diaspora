@@ -15,52 +15,30 @@
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="Diaspora application server"
 NAME=diaspora
+PROCESSNAME=server
 DAEMON=/opt/diaspora/script/server
 DAEMON_ARGS=""
 LOGFILE=/var/log/$NAME.log
 SCRIPTNAME=$0
-USER="diaspora"
+USER="netom"
 CHDIR="/opt/diaspora"
-ENV="RAILS_ENV=production"
 
 . /lib/init/vars.sh
 . /lib/lsb/init-functions
 
 do_start()
 {
-    # Return
-    # 0 if daemon has been started
-    # 1 if daemon was already running
-    # 2 if daemon could not be started
-    if daemon --running -n $NAME -u $USER; then
-        return 1
-    fi
+    cd $CHDIR
 
-    if daemon -r -n $NAME -u $USER -D $CHDIR -O $LOGFILE -e \"$ENV\" $DAEMON;
-    then
-        return 0
-    else
-        return 2
-    fi
+    sudo -u $USER $DAEMON &
+
+    return 0
 }
 
 do_stop()
 {
-    # Return
-    # 0 if daemon has been stopped
-    # 1 if daemon was already stopped
-    # 2 if daemon could not be stopped
-    # other if a failure occurred
-
-    if ! daemon --running -n $NAME -u $USER; then
-        return 1
-    fi
-
-    if daemon --stop -n $NAME -u $USER; then
-        return 0
-    else
-        return 2
-    fi
+    killall -TERM $PROCESSNAME
+    return 0
 }
 
 case "$1" in
@@ -83,7 +61,7 @@ case "$1" in
     esac
     ;;
   status)
-    if daemon --running -n $NAME -u $USER; then
+    if killall -0 $PROCESSNAME; then
         echo "$NAME is running"
     else
         echo "$NAME is NOT running"

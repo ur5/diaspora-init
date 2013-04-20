@@ -15,12 +15,12 @@
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="Diaspora application server"
 NAME=diaspora
-PROCESSNAME=server
-DAEMON=/opt/diaspora/script/server
+PROCESSNAME=ruby
+DAEMON=./script/server
 DAEMON_ARGS=""
 LOGFILE=/var/log/$NAME.log
 SCRIPTNAME=$0
-USER="netom"
+USER="diaspora"
 CHDIR="/opt/diaspora"
 
 . /lib/init/vars.sh
@@ -28,9 +28,10 @@ CHDIR="/opt/diaspora"
 
 do_start()
 {
-    cd $CHDIR
+    touch $LOGFILE
+    chown $USER $LOGFILE
 
-    sudo -u $USER $DAEMON &
+    su -l $USER -c "cd $CHDIR; $DAEMON >> $LOGFILE 2>&1" &
 
     return 0
 }

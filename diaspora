@@ -15,13 +15,11 @@
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="Diaspora application server"
 NAME=diaspora
-PROCESSNAME=ruby
-DAEMON=./script/server
-DAEMON_ARGS=""
-LOGFILE=/var/log/$NAME.log
+DIASPORA_HOME="/opt/diaspora"
+STARTSCRIPT=./script/server
+LOGFILE=$DIASPORA_HOME/log/startscript.log
 SCRIPTNAME=$0
-USER="diaspora"
-CHDIR="/opt/diaspora"
+USER=diaspora
 
 . /lib/init/vars.sh
 . /lib/lsb/init-functions
@@ -31,21 +29,36 @@ do_start()
     touch $LOGFILE
     chown $USER $LOGFILE
 
-    su -l $USER -c "cd $CHDIR; $DAEMON >> $LOGFILE 2>&1" &
+    su -l $USER -c "cd $DIASPORA_HOME; $STARTSCRIPT >> $LOGFILE 2>&1 &"
 
-    return 0
+    [ "$VERBOSE" != no ] && log_action_msg "Waiting for Diaspora processes... "
+    while ! pgrep -f "unicorn_rails master" > /dev/null || ! pgrep -f "sidekiq 2" > /dev/null; do
+        sleep 1
+        [ "$VERBOSE" != no ] && echo -n "."
+    done
+    [ "$VERBOSE" != no ] && log_action_end_msg 0
 }
 
 do_stop()
 {
-    killall -TERM $PROCESSNAME
+    for i in `pgrep -f "unicorn_rails master"`; do
+        [ "$VERBOSE" != no ] && log_action_msg "Killing unicorn master with PID $i"
+        kill -TERM $i
+        [ "$VERBOSE" != no ] && log_action_end_msg $?
+    done
+
+    for i in `pgrep -f "sidekiq 2"`; do
+        [ "$VERBOSE" != no ] && log_action_msg "Killing sidekiq with PID $i"
+        kill -TERM $i
+        [ "$VERBOSE" != no ] && log_action_end_msg $?
+    done
+
     return 0
 }
 
 case "$1" in
   start)
     [ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"
-    log_daemon_msg "Starting $DESC" "$NAME"
     do_start
     case "$?" in
         0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
@@ -54,39 +67,60 @@ case "$1" in
     ;;
   stop)
     [ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$NAME"
-    log_daemon_msg "Stopping $DESC" "$NAME"
     do_stop
     case "$?" in
         0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
-        *) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+        2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
     esac
     ;;
   status)
-    if killall -0 $PROCESSNAME; then
-        echo "$NAME is running"
+    log_daemon_msg 'Checking for running Diaspora processes'
+
+    unicorn_running=false
+    for i in `pgrep -f "unicorn_rails master"`; do
+        log_action_msg "Found unicorn master qith PID $i"
+        unicorn_running=true
+    done
+
+    sidekiq_running=false
+    for i in `pgrep -f "sidekiq 2"`; do
+        log_action_msg "Found sidekiq with PID $i"
+        sidekiq_running=true
+    done
+
+    if $unicorn_running && $sidekiq_running; then
+        log_action_msg "Diaspora health is OK"
+        log_end_msg 0
     else
-        echo "$NAME is NOT running"
+        if $unicorn_running; then
+            log_failure_msg "Unicorn is RUNNING, but sidekiq is DOWN!"
+            log_end_msg 1
+            return 1
+        fi
+        if $sidekiq_running; then
+            log_failure_msg "Sidekiq is RUNNING, but unicorn is DOWN!"
+            log_end_msg 1
+            return 1
+        fi
+        log_daemon_msg "All Diaspora processes are DOWN"
+        log_end_msg 0
     fi
     ;;
   restart|force-reload)
-    #
-    # If the "reload" option is implemented then remove the
-    # 'force-reload' alias
-    #
-    log_daemon_msg "Restarting $DESC" "$NAME"
+    [ "$VERBOSE" != no ] && log_daemon_msg "Restarting $DESC" "$NAME"
     do_stop
     case "$?" in
       0|1)
         do_start
         case "$?" in
             0) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
-            1) [ "$VERBOSE" != no ] && log_end_msg 1 ;; # Old process is still running
-            *) [ "$VERBOSE" != no ] && log_end_msg 1 ;; # Failed to start
+            1) [ "$VERBOSE" != no ] && log_failure_msg "old process is still running" && log_end_msg 1 ;;
+            *) [ "$VERBOSE" != no ] && log_failure_msg "failed to start" && log_end_msg 1 ;;
         esac
         ;;
       *)
-        # Failed to stop
-        log_end_msg 1
+        [ "$VERBOSE" != no ] && log_failure_msg "failed to stop"
+        [ "$VERBOSE" != no ] && log_end_msg 1
         ;;
     esac
     ;;

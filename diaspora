@@ -20,7 +20,7 @@ STARTSCRIPT=./script/server
 LOGFILE=$DIASPORA_HOME/log/startscript.log
 SCRIPTNAME=$0
 USER=diaspora
-STARTUP_TIMEOUT=30
+STARTUP_TIMEOUT=100
 
 . /lib/init/vars.sh
 . /lib/lsb/init-functions

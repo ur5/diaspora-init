@@ -20,19 +20,49 @@ STARTSCRIPT=./script/server
 LOGFILE=$DIASPORA_HOME/log/startscript.log
 SCRIPTNAME=$0
 USER=diaspora
+STARTUP_TIMEOUT=30
 
 . /lib/init/vars.sh
 . /lib/lsb/init-functions
 
+check_unicorn() {
+    pgrep -f "unicorn_rails master"
+}
+
+check_sidekiq() {
+    pgrep -f "sidekiq 2"
+}
+
 do_start()
 {
-    touch $LOGFILE
-    chown $USER $LOGFILE
+    if ! touch $LOGFILE; then
+        log_failure_msg "Could not touch logfile"
+        return 2
+    fi
 
-    su -l $USER -c "cd $DIASPORA_HOME; $STARTSCRIPT >> $LOGFILE 2>&1 &"
+    if ! chown $USER $LOGFILE; then
+        log_failure_msg "Could not chown logfile"
+        return 2
+    fi
+
+    if check_unicorn && check_sidekiq; then
+        log_warning_msg "Diaspora is already running"
+        return 1
+    fi
+
+    if ! su -l $USER -c "cd $DIASPORA_HOME; $STARTSCRIPT >> $LOGFILE 2>&1 &"; then
+        log_failure_msg "Could not run start script"
+        return 2
+    fi
 
     [ "$VERBOSE" != no ] && log_action_msg "Waiting for Diaspora processes... "
-    while ! pgrep -f "unicorn_rails master" > /dev/null || ! pgrep -f "sidekiq 2" > /dev/null; do
+    c=0
+    while ! check_unicorn > /dev/null || ! check_sidekiq > /dev/null; do
+        if [ $c -gt $STARTUP_TIMEOUT ]; then
+            log_failure_msg "Timeout waiting for Diaspora processes"
+            return 2
+        fi
+        c=`expr $c + 1`
         sleep 1
         [ "$VERBOSE" != no ] && echo -n "."
     done
@@ -41,13 +71,13 @@ do_start()
 
 do_stop()
 {
-    for i in `pgrep -f "unicorn_rails master"`; do
+    for i in `check_unicorn`; do
         [ "$VERBOSE" != no ] && log_action_msg "Killing unicorn master with PID $i"
         kill -TERM $i
         [ "$VERBOSE" != no ] && log_action_end_msg $?
     done
 
-    for i in `pgrep -f "sidekiq 2"`; do
+    for i in `check_sidekiq`; do
         [ "$VERBOSE" != no ] && log_action_msg "Killing sidekiq with PID $i"
         kill -TERM $i
         [ "$VERBOSE" != no ] && log_action_end_msg $?
@@ -77,13 +107,13 @@ case "$1" in
     log_daemon_msg 'Checking for running Diaspora processes'
 
     unicorn_running=false
-    for i in `pgrep -f "unicorn_rails master"`; do
+    for i in `check_unicorn`; do
         log_action_msg "Found unicorn master qith PID $i"
         unicorn_running=true
     done
 
     sidekiq_running=false
-    for i in `pgrep -f "sidekiq 2"`; do
+    for i in `check_sidekiq`; do
         log_action_msg "Found sidekiq with PID $i"
         sidekiq_running=true
     done

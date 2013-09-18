@@ -16,7 +16,12 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="Diaspora application server"
 NAME=diaspora
 DIASPORA_HOME="/opt/diaspora"
+
+# if you use mySQL:
 STARTSCRIPT=./script/server
+# if you use postgres use the following line instead
+# STARTSCRIPT="export DB=postgres; ./script/server"
+
 LOGFILE=$DIASPORA_HOME/log/startscript.log
 SCRIPTNAME=$0
 USER=diaspora
